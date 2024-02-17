@@ -4,15 +4,29 @@ import util
 import matplotlib.pyplot as plt
 import pandas as pd
 import pickle
+import requests
+import json
 
 if not util.check_password():
     st.stop()  # Do not continue if check_password is not True.
 
-dados = dh.load_data()
+API_URL = 'http://localhost:8000'
+
+#dados = dh.load_data()
+
+response = requests.get(f'{API_URL}/get_titanic_data/')
+
+dados = None
+
+if response.status_code == 200:
+    dados_json = json.loads(response.json())
+    dados = pd.DataFrame(dados_json)
+else:
+    print("Error: ", response.status_code)
 
 data_analyses_on = st.toggle('Mostrar gráficos')
 
-model = pickle.load(open('./models/model.pkl', 'rb'))
+# model = pickle.load(open('./models/model.pkl', 'rb'))
 
 
 if(data_analyses_on):
@@ -62,38 +76,35 @@ with col2:
     submit = st.button('Verificar')
 
 if(submit or 'survived' in st.session_state):
-    p_class_map = {
-        '1st': 1,
-        '2nd': 2,
-        '3rd': 3
-    }
 
-    sex_map = {
-        'Male': 0,
-        'Female': 1
-    }
-    embarked_map = {
-        'Cherbourg': 0,
-        'Queenstown': 1,
-        'Southampton': 2
-    }
     passageiro = {
-        'Pclass': p_class_map[p_class],
-        'Sex': sex_map[sex],
+        'Pclass': p_class,
+        'Sex': sex,
         'Age': age,
         'SibSp': sib_sp,
         'Parch': par_ch,
         'Fare': fare,
-        'Embarked': embarked_map[embarked]
+        'Embarked': embarked
     }
 
-    values = pd.DataFrame([passageiro])
+    # values = pd.DataFrame([passageiro])
     # st.dataframe(values)
 
-    results = model.predict(values)
+    # results = model.predict(values)
 
-    if len(results) == 1:
-        survived = int(results[0])
+    passageiro_json = json.dumps(passageiro)
+
+    response = requests.post(f'{API_URL}/predict/', json=passageiro_json)
+
+    results = None
+
+    if response.status_code == 200:
+        results = response.json()
+    else:
+        print("Error: ", response.status_code)
+
+    if results is not None:
+        survived = results
         if survived == 1:
             st.subheader('Passageiro Sobreviveu')
             if 'survived' in st.session_state:
@@ -136,7 +147,14 @@ if(submit or 'survived' in st.session_state):
             print(message)
             
             # salva a predição no JSON para cálculo das métricas de avaliação do sistema
-            dh.save_prediction(passageiro)
+            # dh.save_prediction(passageiro)
+            passageiro_json = json.dumps(passageiro)
+            response = requests.post(f'{API_URL}/save_prediction/', json=passageiro_json)
+
+            if response.status_code == 200:
+                print("passageiro salvo")
+            else:
+                print("Error: ", response.status_code)
 
         st.write('')
         # adiciona um botão para permitir o usuário realizar uma nova análise
@@ -152,8 +170,15 @@ if(submit or 'survived' in st.session_state):
 
         if accuracy_predictions_on:
             
-            predictions = dh.get_all_predictions()
-            
+            predictions = None
+
+            response = requests.post(f'{API_URL}/get_all_predictions/', json=dados_json)
+
+            if response.status_code == 200:
+                predictions = response.json()
+            else:
+                print("Error: ", response.status_code)
+
             num_total_predictions = len(predictions)
             
             accuracy_hist = [0]
